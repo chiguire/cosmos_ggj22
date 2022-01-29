@@ -100,10 +100,21 @@ function _update()
 	is_attracting=btn(4)
 	is_repelling=btn(5)	
 
-	if (is_attracting) then
+	for i=1,current_intensities do
+		m=moods[i]
+		sunx,suny=polarcoord(cx,cy,sun_radius,sun_angle)
+		sundx,sundy=vecdirection(m.dotx,m.doty,sunx,suny)
 
-	elseif (is_repelling) then
+		moonx,moony=polarcoord(cx,cy,moon_radius,moon_angle)
+		moondx,moondy=vecdirection(m.dotx,m.doty,moonx,moony)
 
+		if (is_attracting) then
+			m.dotx=m.dotx+sundx+moondx
+			m.doty=m.doty+sundy+moondy
+		elseif (is_repelling) then
+			m.dotx=m.dotx-sundx-moondx
+			m.doty=m.doty-sundy-moondy
+		end
 	end
 end
 
@@ -123,8 +134,8 @@ function _draw()
 
  for i=1,current_intensities do
 	m=moods[i]
-	for str=1,m.intensity do
-		rndstar(m.color,str,m.start_angle)
+	for j=1,m.intensity do
+		rndstar(m.color,j,m.start_angle)
 	end
  end
 
@@ -177,6 +188,13 @@ end
 function polarspr(s,cx,cy,r,a)
  x,y=polarcoord(cx,cy,r,a)
  spr(s,x-4,y-4)
+end
+
+function vecdirection(x0,y0,x1,y1)
+	dx = x1-x0
+	dy = y1-y0
+	l = sqrt(dx*dx+dy*dy)
+	return dx/l,dy/l
 end
 
 function zspr(n,w,h,dx,dy,dz)
