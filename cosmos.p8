@@ -21,6 +21,7 @@ dot_increaseradius_mult=0.5 -- wrt earth_radius
 dot_decreaseradius_mult=1.0 -- wrt earth_radius
 dot_increaseintensity=0.2
 dot_decreaseintensity=0.1
+abundant_timer_increase = 0.05
 
 current_intensities=1
 is_attracting=false
@@ -120,30 +121,38 @@ function _update()
 
 	for i=1,current_intensities do
 		m=moods[i]
+
+		-- coordinates wrt sun
 		sunx,suny=polarcoord(cx,cy,sun_radius,sun_angle)
 		sundistx,sundisty=vec(m.dotx,m.doty,sunx,suny)
 		sundistsqrd=sundistx*sundistx+sundisty*sundisty -- no need to sqrt
 		sundx,sundy=vecdirection(m.dotx,m.doty,sunx,suny)
 
+		-- coordinates wrt moon
 		moonx,moony=polarcoord(cx,cy,moon_radius,moon_angle)
 		moondistx,moondisty=vec(m.dotx,m.doty,moonx,moony)
 		moondistsqrd=moondistx*moondistx+moondisty*moondisty
 		moondx,moondy=vecdirection(m.dotx,m.doty,moonx,moony)
 
+		-- force sign multipler
 		sign=is_attracting and 1 or is_repelling and -1 or 0
 
+		-- gravity!
 		gsun=(gravity_constant*sun_mass*m.dotmass) / sundistsqrd
 		gmoon=(gravity_constant*moon_mass*m.dotmass)/moondistsqrd
 		
 		fx=gsun*sundx+gmoon*moondx
 		fy=gsun*sundy+gmoon*moondy
 		
+		-- velocity
 		m.dotvx=m.dotvx+sign*fx
 		m.dotvy=m.dotvy+sign*fy
 
+		-- position
 		m.dotx=m.dotx+m.dotvx
 		m.doty=m.doty+m.dotvy
 
+		-- apply increase/decrease radius rules
 		dotincreasestatus=dotstatus(m.dotx,m.doty)
 		if (dotincreasestatus == "+") then
 			m.intensity += dot_increaseintensity
@@ -153,6 +162,12 @@ function _update()
 			m.intensity = max(0, m.intensity)
 		end
 
+		-- apply max intensity rules
+		if (m.intensity == max_intensity) then
+			m.abundant_timer += abundant_timer_increase
+		end
+
+		-- apply collide rules to avoid dots getting too far
 		if (dotradius >= earth_radius*dot_maxradius_mult) then
 			maxx,maxy=polarcoord(cx,cy,earth_radius*dot_maxradius_mult,dotangle)
 			m.dotx=maxx
@@ -164,6 +179,18 @@ function _update()
 			m.dotanglecollide=false
 		end
 	end
+
+	-- apply rules to unlock new mood
+	if (moods[current_intensities].intensity == max_intensity and
+        moods[current_intensities].abundant_timer >= 1) then
+		if (current_intensities < count(moods)) then
+			current_intensities += 1
+		else
+			-- win state!
+			extcmd("shutdown")
+		end
+	end
+
 end
 
 function _draw()
@@ -239,7 +266,7 @@ function _draw()
 	circ(x-1, y-1, 7-(time()*5%3), 2)
  end
 
- print("intensity: "..tostring(moods[1].intensity))
+ --print("intensity: "..tostring(moods[1].intensity))
 end
 
 -- draw a star
