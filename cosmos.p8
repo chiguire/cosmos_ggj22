@@ -6,11 +6,17 @@ __lua__
 #include perlin.lua
 cx=64 cy=64
 
-angle_speed = 0.002
+--angle_speed = 0.002
+sun_player=0
 sun_angle=0
+sun_angle_direction=0
+sun_desired_angle=0
 sun_radius=56
 sun_mass=2
+moon_player=1
 moon_angle=0
+moon_angle_direction=0
+moon_desired_angle=0
 moon_radius=45
 moon_mass=1
 earth_radius=32
@@ -27,7 +33,24 @@ current_intensities=1
 is_attracting=false
 is_repelling=false
 
-
+input = {
+	sun = {
+		left = false,
+		right = false,
+		up = false,
+		down = false,
+		attracting = false,
+		repelling = false,
+	},
+	moon = {
+		left = false,
+		right = false,
+		up = false,
+		down = false,
+		attracting = false,
+		repelling = false
+	}
+}
 moods={
 	{
 		intensity=0,
@@ -112,12 +135,45 @@ function reset()
 end
 
 function _update()
-	if (btn(0)) then moon_angle -= angle_speed end
-	if (btn(1)) then moon_angle += angle_speed end
-	if (btn(2)) then sun_angle -= angle_speed end
-	if (btn(3)) then sun_angle += angle_speed end
-	is_attracting=btn(4)
-	is_repelling=btn(5)	
+	-- read all input
+	input = {
+		sun = {
+			left = btn(0,sun_player),
+			right = btn(1,sun_player),
+			up = btn(2,sun_player),
+			down = btn(3,sun_player),
+			attracting = btn(4,sun_player),
+			repelling = btn(5,sun_player),
+		},
+		moon = {
+			left = btn(0,moon_player),
+			right = btn(1,moon_player),
+			up = btn(2,moon_player),
+			down = btn(3,moon_player),
+			attracting = btn(4,moon_player),
+			repelling = btn(5,moon_player)
+		}
+	}
+
+	-- set sun angle
+	new_sun_desired_angle = get_desired_angle(input.sun)
+
+	if (new_sun_desired_angle ~= false) then
+		sun_desired_angle = new_sun_desired_angle
+		sun_angle_direction = get_angle_direction(sun_angle, sun_desired_angle)
+	end
+
+	sun_angle = move_angle(sun_angle, sun_angle_direction, sun_desired_angle)
+
+	-- set moon angle
+	new_moon_desired_angle = get_desired_angle(input.moon)
+
+	if (new_moon_desired_angle ~= false) then
+		moon_desired_angle = new_moon_desired_angle
+		moon_angle_direction = get_angle_direction(moon_angle, moon_desired_angle)
+	end
+
+	moon_angle = move_angle(moon_angle, moon_angle_direction, moon_desired_angle)
 
 	for i=1,current_intensities do
 		m=moods[i]
@@ -135,18 +191,19 @@ function _update()
 		moondx,moondy=vecdirection(m.dotx,m.doty,moonx,moony)
 
 		-- force sign multipler
-		sign=is_attracting and 1 or is_repelling and -1 or 0
+		sun_sign=input.sun.attracting and 1 or input.sun.repelling and -1 or 0
+		moon_sign=input.moon.attracting and 1 or input.moon.repelling and -1 or 0
 
 		-- gravity!
 		gsun=(gravity_constant*sun_mass*m.dotmass) / sundistsqrd
 		gmoon=(gravity_constant*moon_mass*m.dotmass)/moondistsqrd
 		
-		fx=gsun*sundx+gmoon*moondx
-		fy=gsun*sundy+gmoon*moondy
+		fx=gsun*sundx*sun_sign+gmoon*moondx*moon_sign
+		fy=gsun*sundy*sun_sign+gmoon*moondy*moon_sign
 		
 		-- velocity
-		m.dotvx=m.dotvx+sign*fx
-		m.dotvy=m.dotvy+sign*fy
+		m.dotvx=m.dotvx+fx
+		m.dotvy=m.dotvy+fy
 
 		-- position
 		m.dotx=m.dotx+m.dotvx
@@ -190,7 +247,54 @@ function _update()
 			extcmd("shutdown")
 		end
 	end
+end
 
+function get_desired_angle(i)
+	if (i.up) then
+		if (i.left) then
+			return 3.0/8.0
+		elseif (i.right) then
+			return 1.0/8.0
+		else
+			return 2.0/8.0
+		end
+	elseif (i.down) then
+		if (i.left) then
+			return 5.0/8.0
+		elseif (i.right) then
+			return 7.0/8.0
+		else
+			return 6.0/8.0
+		end
+	else
+		if (i.left) then
+			return 4.0/8.0
+		elseif (i.right) then
+			return 0.0/8.0
+		else
+			return false -- no button pressed, keep same angle
+		end
+	end
+end
+
+-- returns 1 if a1 is closest to a0 to its left (or exactly 180deg)
+-- returns -1 if a1 is closest to a1 to its right
+-- returns 0 if a1 == a0
+function get_angle_direction(a0, a1)
+	-- modified dot product
+	modified_dot = cos(a0)*-1*sin(a0)+sin(a0)*cos(a1)
+
+	if (modified_dot > 0) then
+		return 1
+	elseif (modified_dot < 0) then
+		return -1
+	else
+		return 0
+	end
+end
+
+function move_angle(angle, angle_direction, desired_angle)
+	return desired_angle
 end
 
 function _draw()
@@ -198,7 +302,7 @@ function _draw()
  map(0, 0, 0, 0, 16, 16)
 
  -- draw plain earth
- fillp(0)
+ fillp(0b1111101111111101.1)
  circfill(cx, cy, earth_radius, 5)
 
  -- draw intensity coverage
@@ -250,23 +354,27 @@ function _draw()
  -- draw sun
  polarspr(1,cx,cy,sun_radius,sun_angle)
  
- -- draw attracting/repelling waves
+ -- draw attracting/repelling waves for the sun
  fillp(0)
- if (is_repelling) then
-	x,y=polarcoord(cx,cy,moon_radius,moon_angle)
-	circ(x-1, y-1, 4+(time()*5%3), 5)
-
+ if (input.sun.repelling) then
 	x,y=polarcoord(cx,cy,sun_radius,sun_angle)
 	circ(x-1, y-1, 4+(time()*5%3), 5)
- elseif (is_attracting) then
-	x,y=polarcoord(cx,cy,moon_radius,moon_angle)
-	circ(x-1, y-1, 7-(time()*5%3), 2)
-
+ elseif (input.sun.attracting) then
 	x,y=polarcoord(cx,cy,sun_radius,sun_angle)
 	circ(x-1, y-1, 7-(time()*5%3), 2)
  end
 
- --print("intensity: "..tostring(moods[1].intensity))
+ -- draw attracting/repelling waves for the moon
+ if (input.moon.repelling) then
+	x,y=polarcoord(cx,cy,moon_radius,moon_angle)
+	circ(x-1, y-1, 4+(time()*5%3), 5)
+ elseif (input.moon.attracting) then
+	x,y=polarcoord(cx,cy,moon_radius,moon_angle)
+	circ(x-1, y-1, 7-(time()*5%3), 2)
+ end
+
+ print("sda: "..tostring(sun_desired_angle).." sa: "..tostring(sun_angle))
+ print("mda: "..tostring(moon_desired_angle).." ma: "..tostring(moon_angle))
 end
 
 -- draw a star
