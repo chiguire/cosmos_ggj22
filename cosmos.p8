@@ -119,6 +119,20 @@ sun_fills = {
 	0b1010010110100101.1
 }
 
+function go_to_gamestate(new_state)
+	if (gamestate == new_state) then
+		return
+	end
+
+	if (new_state == "menustart") then
+		start_menustart()
+	elseif (new_state == "playing") then
+		start_playing()
+	elseif (new_state == "win") then
+		start_win()
+	end
+end
+
 function reset()
 	for m in all(moods) do
 		m.intensity=0
