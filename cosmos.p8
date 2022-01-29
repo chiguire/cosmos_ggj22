@@ -9,14 +9,21 @@ cx=64 cy=64
 angle_speed = 0.002
 sun_angle=0
 sun_radius=56
+sun_mass=2
 moon_angle=0
 moon_radius=45
+moon_mass=1
 earth_radius=32
 max_intensity=50.0
+gravity_constant=10
+dot_maxradius_mult=1.2 -- wrt earth_radius
+dot_increaseradius_mult=0.5 -- wrt earth_radius
+dot_decreaseradius_mult=1.0 -- wrt earth_radius
 
 current_intensities=1
 is_attracting=false
 is_repelling=false
+
 
 moods={
 	{
@@ -28,7 +35,12 @@ moods={
 		fill=0b0111111011011011.1,
 		dotspr=2,
 		dotx=64,
-		doty=64},
+		doty=64,
+		dotvx=0,
+		dotvy=0,
+		dotmass=1,
+		dotanglecollide=false
+	},
 	{
 		intensity=0,
 		color=74,
@@ -38,7 +50,11 @@ moods={
 		fill=0b1011011111101101.1,
 		dotspr=3,
 		dotx=64,
-		doty=64
+		doty=64,
+		dotvx=0,
+		dotvy=0,
+		dotmass=1,
+		dotanglecollide=false
 	},
 	{
 		intensity=0,
@@ -49,7 +65,11 @@ moods={
 		fill=0b1101101101111110.1,
 		dotspr=4,
 		dotx=64,
-		doty=64
+		doty=64,
+		dotvx=0,
+		dotvy=0,
+		dotmass=1,
+		dotanglecollide=false
 	},
 	{
 		intensity=0,
@@ -60,7 +80,11 @@ moods={
 		fill=0b1110110110110111.1,
 		dotspr=5,
 		dotx=64,
-		doty=64
+		doty=64,
+		dotvx=0,
+		dotvy=0,
+		dotmass=1,
+		dotanglecollide=false
 	}
 }
 sun_fills = {
@@ -103,17 +127,39 @@ function _update()
 	for i=1,current_intensities do
 		m=moods[i]
 		sunx,suny=polarcoord(cx,cy,sun_radius,sun_angle)
+		sundistx,sundisty=vec(m.dotx,m.doty,sunx,suny)
+		sundistsqrd=sundistx*sundistx+sundisty*sundisty -- no need to sqrt
 		sundx,sundy=vecdirection(m.dotx,m.doty,sunx,suny)
 
 		moonx,moony=polarcoord(cx,cy,moon_radius,moon_angle)
+		moondistx,moondisty=vec(m.dotx,m.doty,moonx,moony)
+		moondistsqrd=moondistx*moondistx+moondisty*moondisty
 		moondx,moondy=vecdirection(m.dotx,m.doty,moonx,moony)
 
-		if (is_attracting) then
-			m.dotx=m.dotx+sundx+moondx
-			m.doty=m.doty+sundy+moondy
-		elseif (is_repelling) then
-			m.dotx=m.dotx-sundx-moondx
-			m.doty=m.doty-sundy-moondy
+		sign=is_attracting and 1 or is_repelling and -1 or 0
+
+		gsun=(gravity_constant*sun_mass*m.dotmass) / sundistsqrd
+		gmoon=(gravity_constant*moon_mass*m.dotmass)/moondistsqrd
+		
+		fx=gsun*sundx+gmoon*moondx
+		fy=gsun*sundy+gmoon*moondy
+		
+		m.dotvx=m.dotvx+sign*fx
+		m.dotvy=m.dotvy+sign*fy
+
+		m.dotx=m.dotx+m.dotvx
+		m.doty=m.doty+m.dotvy
+
+		dotradius,dotangle=cartcoord(cx,cy,m.dotx,m.doty)
+		if (dotradius >= earth_radius*dot_maxradius_mult) then
+			maxx,maxy=polarcoord(cx,cy,earth_radius*dot_maxradius_mult,dotangle)
+			m.dotx=maxx
+			m.doty=maxy
+			m.dotvx=0
+			m.dotvy=0
+			m.dotanglecollide=dotangle
+		else
+			m.dotanglecollide=false
 		end
 	end
 end
@@ -141,6 +187,9 @@ function _draw()
 
  for i=1,current_intensities do
 	m=moods[i]
+	if (m.dotanglecollide ~= false) then
+		drawdotcollider(m.dotx, m.doty, m.dotanglecollide)
+	end
 	spr(m.dotspr, m.dotx-4, m.doty-4)
  end
 
@@ -170,8 +219,10 @@ function _draw()
 	circ(x-1, y-1, 7-(time()*5%3), 2)
  end
 
+ --print("dotanglecollide: "..tostring(dotanglecollide))
 end
 
+-- draw a star
 function rndstar(s,i,start_angle)
  t=time()
  r=earth_radius*1.2*noise(t*start_angle+i, i*10, t*(i/max_intensity))
@@ -179,24 +230,40 @@ function rndstar(s,i,start_angle)
  polarspr(s,cx,cy,r,a)
 end
 
+-- returns radius,angle
+function cartcoord(x0,y0,x1,y1)
+	x,y=vec(x0,y0,x1,y1)
+	r=sqrt(x*x+y*y)
+	a=atan2(x,y)
+	return r,a
+end
+
+-- returns x,y
 function polarcoord(cx,cy,r,a)
 	x=cx+r*cos(a)
 	y=cy+r*sin(a)
 	return x,y
 end
 
+-- draws sprite in polar coords
 function polarspr(s,cx,cy,r,a)
  x,y=polarcoord(cx,cy,r,a)
  spr(s,x-4,y-4)
 end
 
+-- vector btw two points
+function vec(x0,y0,x1,y1)
+	return x1-x0, y1-y0
+end
+
+-- normalised vector
 function vecdirection(x0,y0,x1,y1)
-	dx = x1-x0
-	dy = y1-y0
+	dx, dy = vec(x0,y0,x1,y1)
 	l = sqrt(dx*dx+dy*dy)
 	return dx/l,dy/l
 end
 
+-- draw spritesheet in spritesheet coords (not pixel)
 function zspr(n,w,h,dx,dy,dz)
  sx = 8 * (n % 16)
  sy = 8 * flr(n / 16)
@@ -205,6 +272,19 @@ function zspr(n,w,h,dx,dy,dz)
  dw = sw * dz
  dh = sh * dz
  sspr(sx,sy,sw,sh,dx,dy,dw,dh)
+end
+
+-- draw dot angle collider, when dot is beyond border
+function drawdotcollider(x, y, angle)
+	t=time()*20
+	fillp(0)
+	leftangle = angle-0.09
+	rightangle = angle+0.09
+	for i=0,4,2 do
+		leftx,lefty = polarcoord(x,y,3+i+t%3,leftangle)
+		rightx,righty = polarcoord(x,y,3+i+t%3,rightangle)
+		line(leftx,lefty,rightx,righty,5)
+	end
 end
 
 reset()
