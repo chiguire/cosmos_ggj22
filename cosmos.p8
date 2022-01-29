@@ -19,6 +19,8 @@ gravity_constant=10
 dot_maxradius_mult=1.2 -- wrt earth_radius
 dot_increaseradius_mult=0.5 -- wrt earth_radius
 dot_decreaseradius_mult=1.0 -- wrt earth_radius
+dot_increaseintensity=0.2
+dot_decreaseintensity=0.1
 
 current_intensities=1
 is_attracting=false
@@ -31,7 +33,7 @@ moods={
 		color=70,
 		bg_color=2,
 		start_angle=1.00,
-		abundant=false,
+		abundant_timer=0,
 		fill=0b0111111011011011.1,
 		dotspr=2,
 		dotx=64,
@@ -46,7 +48,7 @@ moods={
 		color=74,
 		bg_color=1,
 		start_angle=0.25,
-		abundant=false,
+		abundant_timer=0,
 		fill=0b1011011111101101.1,
 		dotspr=3,
 		dotx=64,
@@ -61,7 +63,7 @@ moods={
 		color=73,
 		bg_color=3,
 		start_angle=0.50,
-		abundant=false,
+		abundant_timer=0,
 		fill=0b1101101101111110.1,
 		dotspr=4,
 		dotx=64,
@@ -76,7 +78,7 @@ moods={
 		color=71,
 		bg_color=4,
 		start_angle=0.75,
-		abundant=false,
+		abundant_timer=0,
 		fill=0b1110110110110111.1,
 		dotspr=5,
 		dotx=64,
@@ -93,27 +95,19 @@ sun_fills = {
 }
 
 function reset()
-	moods[1].intensity = 0
-	moods[2].intensity = 0
-	moods[3].intensity = 0
-	moods[4].intensity = 0
-	moods[1].abundant = false
-	moods[2].abundant = false
-	moods[3].abundant = false
-	moods[4].abundant = false
+	for m in all(moods) do
+		m.intensity=0
+		m.abundant_timer=0
+		r=earth_radius*dot_increaseradius_mult + 0.5*earth_radius*(dot_decreaseradius_mult-dot_increaseradius_mult)
+		a=rnd(1)
+		rx,ry=polarcoord(cx,cy,r,a)
+		m.dotx=rx
+		m.doty=ry
+	end
 
 	sun_angle = rnd(1)
 	moon_angle = rnd(1)
 	current_intensities = 1
-	reset_dot(1)
-end
-
-function reset_dot(mood)
-	moods[mood].intensity = 0
-	r = 0.5+rnd(0.5)*earth_radius*0.5
-	a = rnd(1)
-	moods[mood].dotx=cx+r*cos(a)
-	moods[mood].doty=cy+r*sin(a)
 end
 
 function _update()
@@ -150,7 +144,15 @@ function _update()
 		m.dotx=m.dotx+m.dotvx
 		m.doty=m.doty+m.dotvy
 
-		dotradius,dotangle=cartcoord(cx,cy,m.dotx,m.doty)
+		dotincreasestatus=dotstatus(m.dotx,m.doty)
+		if (dotincreasestatus == "+") then
+			m.intensity += dot_increaseintensity
+			m.intensity = min(max_intensity, m.intensity)
+		elseif (dotincreasestatus == "-") then
+			m.intensity -= dot_decreaseintensity
+			m.intensity = max(0, m.intensity)
+		end
+
 		if (dotradius >= earth_radius*dot_maxradius_mult) then
 			maxx,maxy=polarcoord(cx,cy,earth_radius*dot_maxradius_mult,dotangle)
 			m.dotx=maxx
@@ -168,29 +170,44 @@ function _draw()
  cls(0)
  map(0, 0, 0, 0, 16, 16)
 
+ -- draw plain earth
  fillp(0)
  circfill(cx, cy, earth_radius, 5)
+
+ -- draw intensity coverage
  for i=1,current_intensities do
   m=moods[i]
-  if (m.abundant) then
-   fillp(m.fill)
-   circfill(cx, cy, earth_radius, m.bg_color)
-  end
+  fillp(m.fill)
+  circfill(cx, cy, earth_radius*(m.intensity/max_intensity), m.bg_color)
  end
 
+ -- draw increase radius
+ fillp(0b0101101001011010.1)
+ circ(cx,cy,earth_radius*dot_increaseradius_mult,6)
+
+ -- draw intensity stars
  for i=1,current_intensities do
 	m=moods[i]
-	for j=1,m.intensity do
+	for j=1,flr(m.intensity) do
 		rndstar(m.color,j,m.start_angle)
 	end
  end
 
+ -- draw dots
  for i=1,current_intensities do
 	m=moods[i]
 	if (m.dotanglecollide ~= false) then
 		drawdotcollider(m.dotx, m.doty, m.dotanglecollide)
 	end
 	spr(m.dotspr, m.dotx-4, m.doty-4)
+	dotincreasestatus=dotstatus(m.dotx,m.doty)
+	if (dotincreasestatus == "+") then
+		spr(18,m.dotx-1,m.doty-1)
+	elseif (dotincreasestatus == "-") then
+		spr(20,m.dotx-1,m.doty-1)
+	else
+		spr(19,m.dotx-1,m.doty-1)
+	end
  end
 
  -- sun halo
@@ -201,9 +218,12 @@ function _draw()
 	circfill(x-1, y-1, 5, 9)
  end
 
+ -- draw moon
  polarspr(6,cx,cy,moon_radius,moon_angle)
+ -- draw sun
  polarspr(1,cx,cy,sun_radius,sun_angle)
  
+ -- draw attracting/repelling waves
  fillp(0)
  if (is_repelling) then
 	x,y=polarcoord(cx,cy,moon_radius,moon_angle)
@@ -219,7 +239,7 @@ function _draw()
 	circ(x-1, y-1, 7-(time()*5%3), 2)
  end
 
- --print("dotanglecollide: "..tostring(dotanglecollide))
+ print("intensity: "..tostring(moods[1].intensity))
 end
 
 -- draw a star
@@ -287,6 +307,18 @@ function drawdotcollider(x, y, angle)
 	end
 end
 
+-- returns "+", "." or "-" depending whether dot is in increase radius, or outside decrease radius
+function dotstatus(x,y)
+	dotradius,dotangle=cartcoord(cx,cy,x,y)
+	if (dotradius <= earth_radius*dot_increaseradius_mult) then
+		return "+"
+	elseif (dotradius > earth_radius*dot_decreaseradius_mult) then
+		return "-"
+	else
+		return "."
+	end
+end
+
 reset()
 
 __gfx__
@@ -298,9 +330,9 @@ __gfx__
 007007009a99a99a0dddddd00eeeeee00ffffff00aaaaaa066566666000000000000000000000000000000000000000000000000000000000000000000000000
 00000000099a99a000dddd0000eeee0000ffff0000aaaa0006665660000000000000000000000000000000000000000000000000000000000000000000000000
 000000000099a9000000000000000000000000000000000000666600000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000008880000009000000555000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000
+00000000000000000800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 00000000000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
