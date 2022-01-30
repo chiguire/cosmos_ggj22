@@ -29,10 +29,7 @@ dot_decreaseradius_mult=1.0 -- wrt earth_radius
 dot_increaseintensity=0.2
 dot_decreaseintensity=0.1
 abundant_timer_increase = 0.05
-
 current_intensities=1
-is_attracting=false
-is_repelling=false
 
 input = {
 	sun = {
@@ -119,6 +116,10 @@ sun_fills = {
 	0b1010010110100101.1
 }
 
+function _init()
+	go_to_gamestate("menustart")
+end
+
 function go_to_gamestate(new_state)
 	if (gamestate == new_state) then
 		return
@@ -131,6 +132,20 @@ function go_to_gamestate(new_state)
 	elseif (new_state == "win") then
 		start_win()
 	end
+
+	gamestate = new_state
+end
+
+function start_menustart()
+
+end
+
+function start_playing()
+	reset()
+end
+
+function start_win()
+
 end
 
 function reset()
@@ -142,6 +157,8 @@ function reset()
 		rx,ry=polarcoord(cx,cy,r,a)
 		m.dotx=rx
 		m.doty=ry
+		m.dotvx=0
+		m.dotvy=0
 	end
 
 	sun_angle = rnd(1)
@@ -160,7 +177,9 @@ function _update()
 end
 
 function update_menustart()
-
+	if (btnp(4,0) or btnp(4,1) or btnp(5,0) or btnp(5,1)) then
+		go_to_gamestate("playing")
+	end
 end
 
 function update_playing()
@@ -283,13 +302,15 @@ function update_playing()
 			current_intensities += 1
 		else
 			-- win state!
-			extcmd("shutdown")
+			go_to_gamestate("win")
 		end
 	end
 end
 
 function update_win()
-
+	if (btnp(4,0) or btnp(4,1) or btnp(5,0) or btnp(5,1)) then
+		go_to_gamestate("menustart")
+	end
 end
 
 function get_desired_angle(i)
@@ -364,6 +385,12 @@ function _draw()
 
  --print("sda: "..tostring(sun_desired_angle).." sa: "..tostring(sun_angle).." sad: "..tostring(sun_angle_direction))
  --print("mda: "..tostring(moon_desired_angle).." ma: "..tostring(moon_angle).." mad: "..tostring(moon_angle_direction))
+end
+
+function draw_menustart()
+	cls(0)
+	map(0, 0, 0, 0, 16, 16)
+	print("Press \x8e to start", 10, 10, 7)
 end
 
 function draw_playing()
@@ -443,6 +470,13 @@ function draw_playing()
 	end
 end
 
+function draw_win()
+	fillp(0b0101101001011010.1)
+	rectfill(0, 0, 128, 128, 0)
+
+	print("You won", 10, 10, 7)
+end
+
 -- draw a star
 function rndstar(s,i,start_angle)
  t=time()
@@ -519,8 +553,6 @@ function dotstatus(x,y)
 		return "."
 	end
 end
-
-reset()
 
 __gfx__
 0000000000a99a000000000000000000000000000000000000666600000000000000000000000000000000000000000000000000000000000000000000000000
